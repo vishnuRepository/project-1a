@@ -1,0 +1,7 @@
+version: 0.2
+phases:
+  build:
+    commands:
+      - cd terraform.tfstate.d/${ENV}
+      - terraform init
+      - terraform destroy -var-file="terraform.tfvars" -auto-approve

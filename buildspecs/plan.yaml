@@ -1,0 +1,13 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - apt install -y terraform
+  build:
+    commands:
+      - terraform init -backend-config="environments/${ENV}/backend.hcl"
+      - terraform plan -var-file="environments/${ENV}/${ENV}.tfvars" -out=tfplan
+artifacts:
+  files:
+    - tfplan
+    - "**/*"

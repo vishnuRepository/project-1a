@@ -1,0 +1,176 @@
+three tier architecture; 
+
+1. presentation tier[web] ; handles client request and user interface
+2. app tier[app] ; contain the business logic and process
+3. data tier[db] ; manage data storage and access. 
+
+
+project link; https://repost.aws/articles/ARGpERJ3jISbOAlnmfVUsvMQ/building-a-secure-and-scalable-three-tier-architecture-on-aws-using-cloudformation
+
+
+architecture includes; 
+
+1. network layer ; vpc with public, private and isolated subnets across two availabilty zones.  
+2. security layer ; waf, security group, network acls
+3. web tier ; app load balancer in public subnets
+4. data tier; aurora mysql cluster isolated subnets
+5. managment; bastionhost for secure admin access. 
+
+
+
+
+key components, 
+
+network infrastructure; 
+
+1. public subnet ; 10.0.1.0/24, 10.0.2.0/24 - host internet facing subnets
+2. private subnet; 10.0.10.0/24, 10.0.11.0/24 - host app servers
+3. isolated subnets ; (10.0.20.0/24, 10.0.21.0/24) - host data base servers
+
+
+Benefits of This Architecture
+
+Security
+
+**Defense in Depth: **Multiple security layers protect your application
+Network Isolation: Each tier has its own security controls
+Least Privilege: Components only have the access they need
+** WAF Protection:** Guards against common web vulnerabilities
+Scalability
+
+Horizontal Scaling: Auto Scaling groups adjust to demand
+Vertical Scaling: Instance types can be changed as needed
+**Database Scaling: **Aurora scales compute and storage independently
+Reliability
+
+**Multi-AZ Deployment: **Resilient to availability zone failures
+**Auto Recovery: **Failed instances are automatically replaced
+Load Distribution: Traffic is balanced across healthy instances
+**Database Redundancy: **Automatic failover for database instances
+Maintainability
+
+Infrastructure as Code: Entire architecture defined in CloudFormation
+Parameterized Deployment: Easily customize for different environments
+Separation of Concerns: Each tier can be updated independently
+Bastion Host: Secure administrative access
+Cost Optimization
+
+While this architecture provides enterprise-grade features, you can optimize costs by:
+
+Right-sizing instances: Start with smaller instance types and scale as needed
+Auto Scaling policies: Scale down during low-traffic periods
+Reserved Instances: Purchase reserved instances for predictable workloads
+Aurora Serverless: Consider Aurora Serverless for variable workloads
+Enhancements and Next Steps This architecture provides a solid foundation, but consider these enhancements for production use:
+
+**HTTPS Support: **Add SSL/TLS certificates and configure HTTPS listeners
+Monitoring: Implement CloudWatch dashboards and alarms
+Backup Strategy: Configure automated backups and test restoration
+CI/CD Pipeline: Automate application deployment *** Session Management:** Add ElastiCache for session storage
+Content Delivery: Integrate CloudFront for static content
+Conclusion
+
+The three-tier high availability architecture presented in this article provides a robust foundation for deploying applications on AWS. By leveraging CloudFormation, you can consistently deploy this architecture across multiple environments while maintaining security, scalability, and reliability. This architecture follows AWS best practices and can be adapted to a wide range of applications, from simple websites to complex enterprise systems. The separation of tiers, combined with high availability features, ensures your application can handle failures gracefully while providing a consistent experience to your users. Whether you're building a new application or migrating an existing one to AWS, this architecture provides a proven pattern for success in the cloud.
+
+
+.1. Recommended Directory Structure
+To support workspaces effectively, we’ll separate the module logic from the environment configuration.
+
+Plaintext
+.
+├── modules/
+│   └── three_tier/
+│       ├── main.tf          # The core logic (VPC, EC2, RDS)
+│       ├── variables.tf     # Definitions for the module
+│       ├── outputs.tf       # Exported values (ALB DNS, etc.)
+│       └── data.tf          # AMIs and AZ lookups
+├── main.tf                  # Root module (calls the three_tier module)
+├── variables.tf             # Root variables
+├── terraform.tfvars         # Default values
+└── backend.tf               # S3/Remote state config
+2. Enhanced Variables (modules/three_tier/variables.tf)
+We need to parameterize the CIDRs, environment names, and scaling counts so they aren't "locked" to one environment.
+
+Terraform
+variable "environment" {
+  description = "Environment name (e.g., dev, prod)"
+  type        = string
+}
+
+variable "project_name" {
+  description = "Project name for tagging"
+  type        = string
+  default     = "my-app"
+}
+
+variable "vpc_cidr" {
+  description = "Base CIDR for the VPC"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "web_instance_count" {
+  type    = number
+  default = 2
+}
+
+variable "db_instance_count" {
+  type    = number
+  default = 1
+}
+
+variable "db_instance_class" {
+  type    = string
+  default = "db.t3.medium"
+}
+3. Refactoring the Module Logic
+In your modules/three_tier/main.tf, you should update the resource names and tags to use the ${var.environment} variable. This prevents naming collisions when you use multiple workspaces in the same account.
+
+Example Change for Tags:
+
+Terraform
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-vpc"
+    Environment = var.environment
+  }
+}
+4. Implementing Workspaces in the Root
+In your root main.tf, you will call the module and use the terraform.workspace built-in variable to toggle settings.
+
+Terraform
+# Root main.tf
+
+module "infrastructure" {
+  source      = "./modules/three_tier"
+  
+  # Logic: If workspace is 'prod', use a larger instance; otherwise t3.micro
+  environment   = terraform.workspace
+  instance_type = terraform.workspace == "prod" ? "t3.medium" : "t3.micro"
+  
+  vpc_cidr           = var.vpc_cidr
+  db_username        = var.db_username
+  db_password        = var.db_password
+  web_instance_count = terraform.workspace == "prod" ? 3 : 1
+}
+5. Managing the Workspaces
+Once your code is structured, you handle the environments via the CLI:
+
+Create a Dev workspace: terraform workspace new dev
+
+Deploy Dev: terraform apply -var-file="dev.tfvars"
+
+Switch to Prod: terraform workspace new prod
+
+Deploy Prod: terraform apply -var-file="prod.tfvars"
+
+Key Improvements added:
+Isolation: Using terraform.workspace in the naming convention ensures dev-vpc and prod-vpc can exist in the same AWS region without conflict.
+
+Flexibility: You can now change the web_instance_count based on the workspace, saving costs in Dev while maintaining high availability in Prod.
+
+Dry Logic: You only maintain one set of infrastructure code (the module) instead of copying files for every environment.

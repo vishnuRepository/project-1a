@@ -1,0 +1,9 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - apt install -y terraform
+  build:
+    commands:
+      - terraform init -backend-config="environments/${ENV}/backend.hcl"
+      - terraform apply -input=false tfplan
